@@ -1540,6 +1540,11 @@
             }
         }
         
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
         function renderModels() {
             const tbody = document.getElementById('modelsTableBody');
             if (!tbody) return;
@@ -1550,32 +1555,37 @@
                 </td></tr>`;
                 return;
             }
-            tbody.innerHTML = modelsData.map(model => `
+            tbody.innerHTML = modelsData.map((model, index) => {
+                const safeId = escapeHtml(model.id);
+                const safeName = escapeHtml(model.name);
+                const safeDesc = escapeHtml(model.description);
+                return `
                 <tr>
-                    <td><code>${model.id}</code></td>
-                    <td>${model.name}</td>
-                    <td title="${model.description}">${model.description ? model.description.substring(0, 40) + '...' : ''}</td>
+                    <td><code>${safeId}</code></td>
+                    <td>${safeName}</td>
+                    <td title="${safeDesc}">${model.description ? safeDesc.substring(0, 40) + '...' : ''}</td>
                     <td>${model.context_length}</td>
                     <td>${model.max_tokens}</td>
                     <td><span class="badge ${model.is_public ? 'badge-success' : 'badge-warning'}">${model.is_public ? '公共' : '私有'}</span></td>
                     <td>
-                        <button class="btn btn-sm btn-outline btn-icon" onclick="showEditModelModal('${model.id}')" title="编辑">✏️</button>
-                        <button class="btn btn-sm btn-danger btn-icon" onclick="deleteModel('${model.id}')" title="删除">🗑️</button>
+                        <button class="btn btn-sm btn-outline btn-icon" onclick="showEditModelModalByIndex(${index})" title="编辑">✏️</button>
+                        <button class="btn btn-sm btn-danger btn-icon" onclick="deleteModelByIndex(${index})" title="删除">🗑️</button>
                     </td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function showAddModelModal() {
             openModal('addModelModal');
         }
 
-        function showEditModelModal(id) {
-            const model = modelsData.find(m => m.id === id);
+        function showEditModelModalByIndex(index) {
+            const model = modelsData[index];
             if (!model) return;
             
-            document.getElementById('editModelOriginalId').value = id;
-            document.getElementById('editModelId').value = id;
+            document.getElementById('editModelOriginalId').value = model.id;
+            document.getElementById('editModelId').value = model.id;
             document.getElementById('editModelName').value = model.name || '';
             document.getElementById('editModelDesc').value = model.description || '';
             document.getElementById('editContextLength').value = model.context_length || '';
@@ -1594,7 +1604,7 @@
             };
             
             try {
-                const res = await apiFetch(`${API_BASE}/api/models/${originalId}`, {
+                const res = await apiFetch(`${API_BASE}/api/models/${encodeURIComponent(originalId)}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(model)
@@ -1672,13 +1682,16 @@
          * 删除模型
          * @param {string} id - 模型ID
          */
-        async function deleteModel(id) {
+        async function deleteModelByIndex(index) {
+            const model = modelsData[index];
+            if (!model) return;
+            const id = model.id;
             if (!confirm(`确定要删除模型 "${id}" 吗？此操作不可恢复。`)) {
                 return;
             }
 
             try {
-                const res = await apiFetch(`${API_BASE}/api/models/${id}`, {
+                const res = await apiFetch(`${API_BASE}/api/models/${encodeURIComponent(id)}`, {
                     method: 'DELETE'
                 });
                 const data = await res.json();
