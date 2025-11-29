@@ -1191,7 +1191,7 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
                 
                 if text and not thought:
                     texts.append(text)
-        
+
         # 处理通过fileId引用的图片
         if file_ids and current_session:
             try:
@@ -1201,21 +1201,23 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
                     mime = finfo["mimeType"]
                     fname = finfo.get("fileName")
                     meta = file_metadata.get(fid)
-                    
+
                     if meta:
                         fname = fname or meta.get("name")
                         session_path = meta.get("session") or current_session
                     else:
                         session_path = current_session
-                    
+
                     try:
                         image_data = download_file_with_jwt(jwt, session_path, fid, proxy)
                         filename = save_image_to_cache(image_data, mime, fname)
+                        b64_data = base64.b64encode(image_data).decode("utf-8")
                         img = ChatImage(
                             file_id=fid,
                             file_name=filename,
                             mime_type=mime,
-                            local_path=str(IMAGE_CACHE_DIR / filename)
+                            local_path=str(IMAGE_CACHE_DIR / filename),
+                            base64_data=b64_data,
                         )
                         result.images.append(img)
                         print(f"[图片] 已保存: {filename}")
@@ -1223,7 +1225,7 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
                         print(f"[图片] 下载失败 (fileId={fid}): {e}")
             except Exception as e:
                 print(f"[图片] 获取文件元数据失败: {e}")
-                
+
     except json.JSONDecodeError:
         pass
 
@@ -1805,27 +1807,52 @@ def get_image_base_url(fallback_host_url: str) -> str:
 
 def build_openai_response_content(chat_response: ChatResponse, host_url: str) -> str:
     """构建OpenAI格式的响应内容
-    
-    返回纯文本，如果有图片则将图片URL追加到文本末尾
+
+    返回纯文本，如果有图片可根据配置选择:
+    - url: 在文本末尾追加图片URL（默认行为）
+    - base64: 在文本末尾追加 data:image/...;base64,...
     """
     result_text = chat_response.text
-    
-    # 如果有图片，将图片URL追加到文本中
-    if chat_response.images:
+
+    if not chat_response.images:
+        return result_text
+
+    # 从配置读取图片输出模式，默认 url
+    image_mode = "url"
+    try:
+        if account_manager.config:
+            cfg_mode = account_manager.config.get("image_output_mode") or "url"
+            if isinstance(cfg_mode, str) and cfg_mode.lower() in ("url", "base64"):
+                image_mode = cfg_mode.lower()
+    except Exception:
+        pass
+
+    image_lines = []
+
+    if image_mode == "base64":
+        # 优先使用已有的base64数据
+        for img in chat_response.images:
+            if img.base64_data:
+                mime = img.mime_type or "image/png"
+                image_lines.append(f"data:{mime};base64,{img.base64_data}")
+
+        # 若部分图片没有base64数据，降级为URL形式
         base_url = get_image_base_url(host_url)
-        image_urls = []
-        
+        for img in chat_response.images:
+            if not img.base64_data and img.file_name:
+                image_lines.append(f"{base_url}image/{img.file_name}")
+    else:
+        # 传统URL模式
+        base_url = get_image_base_url(host_url)
         for img in chat_response.images:
             if img.file_name:
-                image_url = f"{base_url}image/{img.file_name}"
-                image_urls.append(image_url)
-        
-        if image_urls:
-            # 在文本末尾添加图片URL
-            if result_text:
-                result_text += "\n\n"
-            result_text += "\n".join(image_urls)
-    
+                image_lines.append(f"{base_url}image/{img.file_name}")
+
+    if image_lines:
+        if result_text:
+            result_text += "\n\n"
+        result_text += "\n".join(image_lines)
+
     return result_text
 
 
@@ -2180,7 +2207,7 @@ def get_config():
 @require_admin
 def update_config():
     """更新配置"""
-    data = request.json
+    data = request.json or {}
     if "proxy" in data:
         account_manager.config["proxy"] = data["proxy"]
     if "log_level" in data:
@@ -2188,6 +2215,10 @@ def update_config():
             set_log_level(data["log_level"], persist=True)
         except Exception as e:
             return jsonify({"error": str(e)}), 400
+    if "image_output_mode" in data:
+        mode = data["image_output_mode"]
+        if isinstance(mode, str) and mode.lower() in ("url", "base64"):
+            account_manager.config["image_output_mode"] = mode.lower()
     account_manager.save_config()
     return jsonify({"success": True})
 

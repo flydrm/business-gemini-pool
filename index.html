@@ -735,6 +735,14 @@
                                 <small>用于访问Google API的代理服务器地址</small>
                                 <div class="proxy-status" id="proxyStatus"></div>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label" for="imageOutputMode">图片输出模式</label>
+                                <select class="form-input" id="imageOutputMode">
+                                    <option value="url">图片URL（默认）</option>
+                                    <option value="base64">Base64 Data URL</option>
+                                </select>
+                                <small>控制聊天接口返回的图片是以URL形式还是以 data:image/...;base64,... 形式输出</small>
+                            </div>
                             <div style="display: flex; gap: 12px;">
                                 <button type="button" class="btn btn-outline" onclick="testProxy()">
                                     测试代理
@@ -1713,6 +1721,11 @@
                 const res = await apiFetch(`${API_BASE}/api/config`);
                 configData = await res.json();
                 document.getElementById('proxyUrl').value = configData.proxy || '';
+                const imageModeSelect = document.getElementById('imageOutputMode');
+                if (imageModeSelect) {
+                    const mode = (configData.image_output_mode || 'url');
+                    imageModeSelect.value = mode === 'base64' ? 'base64' : 'url';
+                }
                 document.getElementById('configJson').value = JSON.stringify(configData, null, 2);
             } catch (e) {
                 showToast('加载配置失败: ' + e.message, 'error');
@@ -1888,11 +1901,13 @@
 
         async function saveSettings() {
             const proxyUrl = document.getElementById('proxyUrl').value;
+            const imageModeSelect = document.getElementById('imageOutputMode');
+            const imageOutputMode = imageModeSelect ? imageModeSelect.value : 'url';
             try {
                 const res = await apiFetch(`${API_BASE}/api/config`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ proxy: proxyUrl })
+                    body: JSON.stringify({ proxy: proxyUrl, image_output_mode: imageOutputMode })
                 });
                 if (!res.ok) throw new Error((await res.json()).detail);
                 showToast('设置保存成功!', 'success');
