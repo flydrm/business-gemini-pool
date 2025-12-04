@@ -36,7 +36,7 @@ CONFIG_FILE = Path(__file__).parent / "business_gemini_session.json"
 
 # 图片缓存配置
 IMAGE_CACHE_DIR = Path(__file__).parent / "image"
-IMAGE_CACHE_HOURS = 1  # 图片缓存时间（小时）
+IMAGE_CACHE_HOURS = 6  # 图片缓存时间（小时）
 IMAGE_CACHE_DIR.mkdir(exist_ok=True)
 
 # API endpoints
