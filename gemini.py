@@ -2424,7 +2424,7 @@ def export_config():
 def list_images():
     """列出缓存图片（公开，可通过 size 指定返回数量）"""
     try:
-        size_param = int(request.args.get("size", 50))
+        size_param = int(request.args.get("size", 100))
     except Exception:
         return jsonify({"error": "size 参数无效"}), 400
 
